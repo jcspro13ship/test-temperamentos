@@ -127,6 +127,15 @@ input[type=text]:focus{border-color:var(--azul);}
 
 <section id="pr" class="page"><div class="wrap" id="rc"></div></section>
 
+<section id="pc" class="page"><div class="wrap">
+  <div class="card hero" style="border-top:5px solid var(--ambar);margin-top:1rem;">
+    <div class="em">🔒</div>
+    <h2 style="margin-bottom:8px;">Este taller ya terminó</h2>
+    <p class="lead">El test de este taller está cerrado y ya no recibe respuestas. Si crees que es un error, habla con tu facilitador.</p>
+  </div>
+  <div class="footer">JCS Consultoría Empresarial</div>
+</div></section>
+
 </main>
 
 <script src="config.js"></script>
@@ -659,11 +668,12 @@ function seEnvia(){return !!(ENDPOINT&&taller);}
 function pintarEnvio(){
   const el=document.getElementById('envio');if(!el)return;
   if(!seEnvia()||!envio){el.innerHTML='';return;}
-  if(envio.estado==='enviado')el.innerHTML='<div class="note" style="background:#E1F5EE;border-left-color:#1D9E75;color:#04342C;">✓ Tu resultado ya le llegó al facilitador.</div>';
+  if(envio.estado==='cerrado')el.innerHTML='<div class="note">El taller ya estaba cerrado cuando terminaste, así que tu resultado no quedó registrado con el grupo. Puedes guardarlo aquí abajo.</div>';
+  else if(envio.estado==='enviado')el.innerHTML='<div class="note" style="background:#E1F5EE;border-left-color:#1D9E75;color:#04342C;">✓ Tu resultado ya le llegó al facilitador.</div>';
   else el.innerHTML='<div class="note">Tu resultado aún no se ha enviado al facilitador. Se enviará solo cuando haya conexión. <button class="btn" style="margin-top:10px;" onclick="enviar()">Reintentar ahora</button></div>';
 }
 async function enviar(){
-  if(!seEnvia()||!RES||!envio||envio.estado==='enviado'||enviando)return;
+  if(!seEnvia()||!RES||!envio||envio.estado!=='pendiente'||enviando)return;
   enviando=true;
   try{
     const c=RES.counts;
@@ -671,8 +681,19 @@ async function enviar(){
       body:JSON.stringify({accion:'guardar',taller,id:envio.id,nombre:uname,D:c.D,I:c.I,S:c.S,C:c.C,tipo:RES.tipo,resultado:RES.titulo})});
     const j=await r.json();
     if(j&&j.ok){envio.estado='enviado';save(true);}
+    else if(j&&j.error==='cerrado'){envio.estado='cerrado';save(true);}
   }catch(e){}
   enviando=false;pintarEnvio();
+}
+// Si el facilitador cerró el taller, quien no haya terminado ya no puede entrar
+let tallerCerrado=false;
+async function revisarCierre(){
+  if(!seEnvia()||RES)return;
+  try{
+    const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({accion:'estado',taller})});
+    const j=await r.json();
+    if(j&&j.ok&&j.cerrado&&!RES){tallerCerrado=true;gt('pc');}
+  }catch(e){}
 }
 window.addEventListener('online',enviar);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)enviar();});
@@ -687,6 +708,7 @@ function ck(){document.getElementById('bs').disabled=document.getElementById('in
 function sh(a){const r=[...a];for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
 
 function sq(){
+  if(tallerCerrado){gt('pc');return;}
   uname=document.getElementById('inp').value.trim();
   if(uname.length<2)return;
   try{document.getElementById('inp').blur();}catch(e){}
@@ -807,7 +829,7 @@ function restart(){
   gt('pw');
 }
 
-function resumeTest(){rq();gt('pq');}
+function resumeTest(){if(tallerCerrado){gt('pc');return;}rq();gt('pq');}
 
 // ---------- Guardar / compartir ----------
 function puedeCompartir(){
@@ -943,6 +965,7 @@ function dlPDF(){
 // ---------- Al abrir: recuperar lo que estaba en curso ----------
 (function(){
   if(seEnvia())document.getElementById('avisoNombre').textContent='Tu nombre aparece en tu resultado y se comparte con el facilitador de este taller.';
+  revisarCierre();
   const s=load();if(!s||!s.uname)return;
   // Si este celular tiene guardado un test de otro taller, se empieza uno nuevo
   if(TALLER&&slug(s.taller)!==TALLER)return;

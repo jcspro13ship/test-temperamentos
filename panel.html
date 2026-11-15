@@ -59,6 +59,7 @@ p.tx{margin-bottom:10px;}
 .eje .tr{height:16px;border-radius:8px;background:var(--ambar);overflow:hidden;}
 .eje .tr div{height:100%;background:var(--azul);}
 .hide{display:none!important;}
+.chip{display:inline-block;border-radius:20px;padding:6px 14px;font-size:14px;font-weight:700;}
 .muted{color:var(--gris);font-size:14px;}
 #qrBox{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;}
 #qrCanvas{width:260px;height:auto;border:1px solid var(--borde);border-radius:10px;}
@@ -102,6 +103,11 @@ p.tx{margin-bottom:10px;}
     <div class="card">
       <div class="kpi"><span class="n" id="kN">0</span><span class="t">personas han terminado el test<span id="kTaller"></span></span></div>
       <p class="muted" id="kHora" style="margin-top:6px;">Elige un taller para empezar.</p>
+      <div id="cierre" class="hide noprint" style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <span class="chip" id="cEstado"></span>
+        <button class="btn" id="bCierre" onclick="cierre()"></button>
+        <span class="muted" id="cNota"></span>
+      </div>
     </div>
     <div class="grid2">
       <div class="card"><div class="sl">Temperamento principal de cada persona</div><div id="gPersonas"></div></div>
@@ -219,7 +225,7 @@ function etiqueta(r){
   return 'Versátil';
 }
 
-let filas=[],taller='',clave='',timer=null,esDemo=false,nombresVisibles=false;
+let filas=[],taller='',clave='',timer=null,esDemo=false,nombresVisibles=false,cerrado=false,conectado=false;
 
 function tab(b){
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b));
@@ -248,7 +254,7 @@ async function cargar(){
   try{
     const j=await api({accion:'leer',taller,clave});
     if(!j.ok){clearInterval(timer);estado(j.error==='clave'?'La clave no es correcta.':'No se pudo leer la hoja.',true);return false;}
-    filas=j.filas||[];
+    filas=j.filas||[];cerrado=!!j.cerrado;conectado=true;
     estado('Conectado. Se actualiza cada 8 segundos.');
     pintar();return true;
   }catch(e){estado('Sin conexión con la hoja. Reintentando…',true);return true;}
@@ -264,13 +270,35 @@ async function cargarTalleres(){
 }
 
 function demo(){
-  clearInterval(timer);esDemo=true;taller='ejemplo';
+  clearInterval(timer);esDemo=true;conectado=false;taller='ejemplo';
   const d=[['Ana (ejemplo)',14,6,3,2],['Luis (ejemplo)',12,9,2,2],['Marta (ejemplo)',9,9,4,3],['Jorge (ejemplo)',11,3,2,9],['Paula (ejemplo)',4,13,6,2],
     ['Diego (ejemplo)',5,11,7,2],['Sara (ejemplo)',3,12,9,1],['Iván (ejemplo)',6,6,7,6],['Rosa (ejemplo)',2,5,13,5],['Óscar (ejemplo)',10,4,3,8],
     ['Lina (ejemplo)',8,10,5,2],['Pedro (ejemplo)',13,5,4,3],['Elsa (ejemplo)',4,8,4,9],['Hugo (ejemplo)',12,7,3,3]];
   filas=d.map(x=>({nombre:x[0],D:x[1],I:x[2],S:x[3],C:x[4],fecha:new Date().toISOString()}));
   estado('Mostrando datos de ejemplo.');
   pintar();
+}
+
+// Cerrar un taller hace que la hoja deje de aceptar respuestas de ese código
+async function cierre(){
+  if(!conectado||esDemo)return;
+  const cerrar=!cerrado;
+  if(!confirm(cerrar?'¿Cerrar el taller “'+taller+'”? Quien escanee el QR después ya no podrá hacer el test.':'¿Reabrir el taller “'+taller+'” para recibir más respuestas?'))return;
+  const b=document.getElementById('bCierre'),n=document.getElementById('cNota');b.disabled=true;n.textContent='';
+  try{
+    const j=await api({accion:cerrar?'cerrar':'abrir',taller,clave});
+    if(j.ok)cerrado=!!j.cerrado;
+    else n.textContent=j.error==='accion'?'Tu hoja tiene el código anterior: pega el nuevo Code.gs y vuelve a implementar.':'No se pudo cambiar el estado del taller.';
+  }catch(e){n.textContent='Sin conexión con la hoja.';}
+  b.disabled=false;pintarCierre();
+}
+function pintarCierre(){
+  const box=document.getElementById('cierre');
+  box.classList.toggle('hide',!conectado||esDemo);
+  const e=document.getElementById('cEstado');
+  e.textContent=cerrado?'Taller cerrado: ya no recibe respuestas':'Taller abierto: recibiendo respuestas';
+  e.style.background=cerrado?'#FBEAE7':'#E1F5EE';e.style.color=cerrado?'#712B13':'#04342C';
+  document.getElementById('bCierre').textContent=cerrado?'Reabrir taller':'Cerrar taller';
 }
 
 function verNombres(){
@@ -300,7 +328,7 @@ function barra(nombre,valor,ancho,color){
 }
 
 function pintar(){
-  const R=resumen();
+  const R=resumen();pintarCierre();
   document.getElementById('demoAviso1').classList.toggle('hide',!esDemo);
   document.getElementById('demoAviso2').classList.toggle('hide',!esDemo);
   document.getElementById('kN').textContent=R.n;
